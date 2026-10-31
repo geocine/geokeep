@@ -32,6 +32,8 @@ export const api = {
   deleteLabel: (name) => request('POST', '/api/labels/delete', { name }),
   importStart: () => request('POST', '/api/import'),
   importCommit: (id) => request('POST', `/api/import/${id}/commit`),
+  config: () => request('GET', '/api/config'),
+  unfurl: (url) => request('POST', '/api/unfurl', { url }),
   snapshots: () => request('GET', '/api/snapshots'),
   snapshot: () => request('POST', '/api/snapshots'),
 

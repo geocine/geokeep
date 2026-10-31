@@ -9,6 +9,7 @@ import { stemForNote, uniqueStem, imageSize, normalizeImported, mediaInfo } from
 import { crc32 } from '../server/zip.js';
 import { Store, applyPatch } from '../server/store.js';
 import { findSources, importSources, writeTakeoutZip } from '../server/takeout.js';
+import { parseMeta, previewable } from '../server/unfurl.js';
 
 const PNG_1x2 = Buffer.from('89504e470d0a1a0a0000000d494844520000000100000002080600000099b9e7a50000000d4944415478da63f8ffff3f0300050001ff5d1c8a0000000049454e44ae426082', 'hex');
 
@@ -190,4 +191,17 @@ test('renaming a title renames the file; labels rename across notes without touc
   assert.equal(renamed.stem, 'Second');
   assert.deepEqual((await readdir(store.keepDir)).filter((f) => f.endsWith('.json')), ['Second.json']);
   assert.equal(await readFile(join(store.keepDir, 'Labels.txt'), 'utf8'), 'New\n');
+});
+
+test('link previews read Open Graph tags, with fallbacks', () => {
+  const html = `<html><head><title>Fallback &amp; title</title>
+    <meta property="og:title" content="Real &quot;Title&quot;">
+    <meta name="description" content="Plain description">
+    <meta content="/img/card.png" property="og:image">
+  </head><body>…</body></html>`;
+  assert.deepEqual(parseMeta(html, 'https://example.com/a/b'), { title: 'Real "Title"', description: 'Plain description', image: 'https://example.com/img/card.png' });
+  assert.equal(parseMeta('<title> Only   title </title>', 'https://x.org/').title, 'Only title');
+  assert.equal(previewable('https://example.com/x'), true);
+  assert.equal(previewable('hxxps://example[.]com/x'), false);
+  assert.equal(previewable('javascript:alert(1)'), false);
 });

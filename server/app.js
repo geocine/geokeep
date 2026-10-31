@@ -11,6 +11,7 @@ import { promisify } from 'node:util';
 import zlib from 'node:zlib';
 import { isSafeBasename, mimeForName } from './format.js';
 import { findSources, importSources, writeTakeoutZip, createSnapshot, listSnapshots } from './takeout.js';
+import { LinkPreviews, previewable, offline } from './unfurl.js';
 
 const PUBLIC_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'public');
 const STATIC_TYPES = {
@@ -80,6 +81,7 @@ async function serveFile(req, res, file, type, cache = 'no-cache') {
 export function createServer(store, { password, host } = {}) {
   const loopback = !host || host === '127.0.0.1' || host === 'localhost' || host === '::1';
   const imports = new Map(); // session id -> { dir, files }
+  const previews = new LinkPreviews(store.dataDir);
 
   const routes = [
     ['GET', /^\/api\/state$/, async () => store.state()],
@@ -146,6 +148,26 @@ export function createServer(store, { password, host } = {}) {
       } finally {
         await rm(session.dir, { recursive: true, force: true });
       }
+    }],
+
+    // Link previews. POST with JSON forces a CORS preflight, so other sites cannot make
+    // this server fetch URLs; images are served only for links already on notes.
+    ['GET', /^\/api\/config$/, async () => ({ linkPreviews: !offline() })],
+    ['POST', /^\/api\/unfurl$/, async ({ req }) => {
+      const { url } = await readJson(req);
+      if (!previewable(url)) throw new HttpError(400, 'Not a web link');
+      const meta = await previews.get(url);
+      if (!meta.ok) throw new HttpError(422, `No preview: ${meta.error || 'unreachable'}`);
+      return { url, title: meta.title, description: meta.description, hasImage: Boolean(meta.image) };
+    }],
+    ['GET', /^\/api\/linkimage$/, async ({ req, res, url }) => {
+      const target = url.searchParams.get('url') || '';
+      if (!previewable(target) || !store.annotationUrls().has(target)) throw new HttpError(404, 'Unknown link');
+      const img = await previews.image(target);
+      if (!img) throw new HttpError(404, 'No image');
+      res.writeHead(200, { 'Content-Type': img.type, 'Content-Length': img.data.length, 'Cache-Control': 'private, max-age=604800', 'X-Content-Type-Options': 'nosniff' });
+      res.end(req.method === 'HEAD' ? undefined : img.data);
+      return undefined;
     }],
 
     ['GET', /^\/api\/export$/, async ({ req, res }) => {

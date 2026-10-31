@@ -1,6 +1,6 @@
 // A note card in the grid.
 
-import { h, iconBtn, colorVar, isList, safeUrl, hostOf, mediaUrl } from './util.js';
+import { h, iconBtn, colorVar, isList, safeUrl, hostOf, mediaUrl, isWebLink, linkImageUrl } from './util.js';
 import { icon } from './icons.js';
 import { state } from './state.js';
 import { noteBlocks, renderBlocks, truncateBlocks, appendLinkified } from './richtext.js';
@@ -77,12 +77,24 @@ function linkList(annotations) {
     shown.map((a) => {
       const href = safeUrl(a.url);
       return h(href ? 'a' : 'div', { class: 'link', href, target: '_blank', rel: 'noopener noreferrer', onclick: (e) => e.stopPropagation(), 'data-tip': a.url },
-        h('div', { class: 'link-icon' }, icon('link', 'sm')),
+        linkThumb(a.url),
         h('div', { class: 'link-text' },
           h('div', { class: 'link-title' }, a.title || a.url),
           h('div', { class: 'link-host' }, hostOf(a.url))));
     }),
     annotations.length > MAX_LINKS ? h('div', { class: 'links-more' }, `+ ${annotations.length - MAX_LINKS} more ${annotations.length - MAX_LINKS === 1 ? 'link' : 'links'}`) : null);
+}
+
+/** Link icon, replaced by the page's preview image (og:image) once it loads. */
+export function linkThumb(url) {
+  const box = h('div', { class: 'link-icon' }, icon('link', 'sm'));
+  if (state.config?.linkPreviews && isWebLink(url)) {
+    const img = h('img', { src: linkImageUrl(url), alt: '', loading: 'lazy', decoding: 'async', draggable: false });
+    img.onload = () => box.classList.add('has-image');
+    img.onerror = () => img.remove();
+    box.append(img);
+  }
+  return box;
 }
 
 /**

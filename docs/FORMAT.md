@@ -25,6 +25,7 @@ data/
   Keep/                 same shape as Takeout/Keep, without the .html files
   geokeep.json          app-only: maps file stems to stable note ids
   snapshots/*.zip       Takeout-shaped zips (daily, and before each import)
+  linkcache/            fetched link-preview metadata and images (safe to delete)
 ```
 
 An export is `Takeout/Keep/…` with the exact files from `data/Keep/`, plus regenerated `.html` previews.
@@ -65,7 +66,7 @@ A note is either a text note (`textContent`) or a checklist (`listContent`).
 { "description": "Page summary, may be empty", "source": "WEBLINK", "title": "Page title", "url": "https://example.com/page" }
 ```
 
-`source` is `WEBLINK` in practice. Takeout's stylesheet also defines `CALENDAR`, `DOCS`, `GMAIL`, `SHEETS` and `SLIDES`, so accept any value.
+`source` is `WEBLINK` in practice. GeoKeep adds an annotation when a note contains a reachable `http(s)` link without one, using the page's Open Graph title and description. The preview image is cached in `linkcache/` and never stored on the note. Takeout's stylesheet also defines `CALENDAR`, `DOCS`, `GMAIL`, `SHEETS` and `SLIDES`, so accept any value.
 
 ### Example
 

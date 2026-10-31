@@ -127,3 +127,37 @@ function buildSearchText(note) {
 export function mediaUrl(filePath) {
   return `/media/${encodeURIComponent(filePath)}`;
 }
+
+// ---- Links ---------------------------------------------------------------------
+
+/** Web links in text: absolute http(s) only, trailing punctuation trimmed. */
+export const URL_RE = /\bhttps?:\/\/[^\s<>"']+[^\s<>"'.,;:!?)\]]/gi;
+
+/** True for a link a browser can actually visit. */
+export function isWebLink(url) {
+  try {
+    const u = new URL(url);
+    return (u.protocol === 'http:' || u.protocol === 'https:') && /[a-z0-9]/i.test(u.hostname);
+  } catch {
+    return false;
+  }
+}
+
+/** Visitable links in a note's title, body and checklist, in order, without repeats. */
+export function linksIn(note) {
+  const text = [note.title, note.textContent, ...(note.listContent || []).map((i) => i.text)].filter(Boolean).join('\n');
+  return [...new Set((text.match(URL_RE) || []).filter(isWebLink))];
+}
+
+/** The link the caret is in, if any. */
+export function linkAt(text, pos) {
+  for (const m of text.matchAll(URL_RE)) {
+    if (pos >= m.index && pos <= m.index + m[0].length) return isWebLink(m[0]) ? m[0] : null;
+  }
+  return null;
+}
+
+/** Preview image for a link preview, served from the local cache. */
+export function linkImageUrl(url) {
+  return `/api/linkimage?url=${encodeURIComponent(url)}`;
+}

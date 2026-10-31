@@ -9,6 +9,7 @@ export const state = {
   dataDir: '',
   loadErrors: [],
   loaded: false,
+  config: null, // { linkPreviews } from the server
 };
 
 const listeners = new Set();
@@ -35,7 +36,9 @@ function ingest(data) {
 }
 
 export async function load() {
-  ingest(await api.state());
+  const [data, config] = await Promise.all([api.state(), state.config ? null : api.config().catch(() => ({}))]);
+  if (config) state.config = config;
+  ingest(data);
   emit();
 }
 

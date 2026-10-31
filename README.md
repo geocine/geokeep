@@ -20,6 +20,7 @@ geokeep export  <out.zip> [--no-html]
 geokeep snapshot
   --data <dir>          data folder (default ./data, or $GEOKEEP_DATA)
   GEOKEEP_PASSWORD=...  require a password; set it before using --host 0.0.0.0
+  GEOKEEP_OFFLINE=1     never fetch link previews from the web
 ```
 
 ## Data

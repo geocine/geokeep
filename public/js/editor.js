@@ -1,11 +1,12 @@
 // The note editor: a modal for existing notes, inline for the "Take a note…" composer.
 
-import { h, iconBtn, colorVar, debounce, isList, noteIsEmpty, editedLabel, fullDate, safeUrl, hostOf, mediaUrl } from './util.js';
+import { h, iconBtn, colorVar, debounce, isList, noteIsEmpty, editedLabel, fullDate, safeUrl, hostOf, mediaUrl, linksIn, linkAt } from './util.js';
 import { icon } from './icons.js';
+import { api } from './api.js';
 import { state, patchNote, createNote, emit } from './state.js';
 import { noteBlocks, renderBlocks, parseNode, blocksToText, blocksToKeepHtml } from './richtext.js';
 import { openColorPicker, openMenu, openLabelPicker, openLightbox, pushLayer, snackbar } from './ui.js';
-import { aspectOf } from './card.js';
+import { aspectOf, linkThumb } from './card.js';
 import * as A from './actions.js';
 import { openDrawing, readInk } from './drawing.js';
 
@@ -14,6 +15,18 @@ document.execCommand('styleWithCSS', false, false);
 
 let openEditorInstance = null;
 export const currentEditor = () => openEditorInstance;
+
+// Link previews the user removed, per note, so they are not fetched again.
+const DISMISSED_KEY = 'gk-dismissed-previews';
+function dismissedPreviews() {
+  try { return new Set(JSON.parse(localStorage.getItem(DISMISSED_KEY) || '[]')); } catch { return new Set(); }
+}
+function rememberDismissed(key) {
+  try {
+    const all = [...dismissedPreviews(), key].slice(-5000);
+    localStorage.setItem(DISMISSED_KEY, JSON.stringify(all));
+  } catch { /* private mode: previews may come back */ }
+}
 
 function autosize(ta) {
   ta.style.height = 'auto';
@@ -36,6 +49,9 @@ export class NoteEditor {
       ...(opts.labels?.length ? { labels: opts.labels.map((name) => ({ name })) } : {}),
     };
     this.readOnly = !!this.work.isTrashed;
+    // Each visitable link gets a preview, like Keep; each is tried once per session,
+    // and a preview the user removed is remembered and not added again.
+    this.knownLinks = new Set();
     this.dirty = new Set();
     this.pending = Promise.resolve();
     this.checkedCollapsed = false;
@@ -98,6 +114,29 @@ export class NoteEditor {
       this.id = entry.id;
     }
     this.syncFromState();
+    this.addLinkPreviews();
+  }
+
+  /** Fetch previews for links that have none; unreachable links get none, like Keep. */
+  async addLinkPreviews() {
+    if (!state.config?.linkPreviews || !this.id || this.readOnly) return;
+    const have = new Set((this.work.annotations || []).map((a) => a.url));
+    const dismissed = dismissedPreviews();
+    const fresh = linksIn(this.work).filter((u) => !this.knownLinks.has(u) && !have.has(u) && !dismissed.has(`${this.id}|${u}`));
+    for (const u of fresh) this.knownLinks.add(u);
+    let next = 0;
+    const worker = async () => {
+      for (let i = next++; i < fresh.length; i = next++) {
+        const url = fresh[i];
+        let preview;
+        try { preview = await api.unfurl(url); } catch { continue; }
+        const annotations = [...(this.work.annotations || []), { description: preview.description || '', source: 'WEBLINK', title: preview.title || hostOf(url), url }];
+        this.work.annotations = annotations;
+        this.renderLinks();
+        await patchNote(this.id, { annotations }, { silent: !this.closing }).catch(() => {});
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(4, fresh.length) }, worker));
   }
 
   /** Make sure the note exists on the server (for image uploads on a new note). */
@@ -136,6 +175,7 @@ export class NoteEditor {
       class: 'editor-title', placeholder: 'Title', rows: 1, readOnly: this.readOnly, maxLength: 999, spellcheck: true,
       oninput: () => { this.work.title = this.titleEl.value.replace(/\n/g, ' '); autosize(this.titleEl); this.markDirty('title'); },
       onkeydown: (e) => { if (e.key === 'Enter') { e.preventDefault(); this.focusContent(); } },
+      onclick: (e) => { if (e.ctrlKey || e.metaKey) this.openLinkAtCaret(); },
     });
     this.titleEl.value = this.work.title || '';
     this.pinBtn = h('button', { type: 'button', class: 'icon-btn', onclick: () => this.togglePin() });
@@ -158,10 +198,63 @@ export class NoteEditor {
       e.preventDefault();
       this.addImages([...e.dataTransfer.files]);
     });
-    this.scrollEl.addEventListener('scroll', () => this.el.classList.toggle('scrolled', this.scrollEl.scrollTop > 0));
+    this.scrollEl.addEventListener('scroll', () => {
+      this.el.classList.toggle('scrolled', this.scrollEl.scrollTop > 0);
+      this.hideLinkBubble();
+    });
+
+    // "Open link" bubble for the link under the caret, in the title, body or a list item.
+    this.linkBubble = h('a', { class: 'link-bubble', target: '_blank', rel: 'noopener noreferrer', hidden: true, onmousedown: (e) => e.preventDefault() });
+    this.el.append(this.linkBubble);
+    const check = () => requestAnimationFrame(() => this.updateLinkBubble());
+    for (const ev of ['keyup', 'click', 'input', 'focusin']) this.el.addEventListener(ev, check);
+    this.el.addEventListener('focusout', () => setTimeout(() => {
+      if (!this.el.contains(document.activeElement)) this.hideLinkBubble();
+    }, 150));
 
     this.renderContent();
     this.refresh();
+  }
+
+  /** The link at the caret and the box to show the bubble under, or null. */
+  linkAtCaret() {
+    const active = document.activeElement;
+    if (active?.tagName === 'TEXTAREA' && this.el.contains(active)) {
+      const url = linkAt(active.value, active.selectionStart);
+      return url ? { url, rect: active.getBoundingClientRect() } : null;
+    }
+    const sel = window.getSelection();
+    const node = sel?.anchorNode;
+    if (this.bodyEl && node?.nodeType === 3 && this.bodyEl.contains(node)) {
+      const url = linkAt(node.data, sel.anchorOffset);
+      if (!url) return null;
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      const rects = [...sel.getRangeAt(0).getClientRects()];
+      return { url, rect: rects[0] || range.getBoundingClientRect() };
+    }
+    return null;
+  }
+
+  updateLinkBubble() {
+    const hit = this.linkAtCaret();
+    if (!hit) { this.hideLinkBubble(); return; }
+    const box = this.el.getBoundingClientRect();
+    this.linkBubble.href = hit.url;
+    this.linkBubble.replaceChildren(icon('openNew', 'sm'), h('span', null, `Open ${hostOf(hit.url)}`));
+    this.linkBubble.hidden = false;
+    const left = Math.min(Math.max(8, hit.rect.left - box.left), box.width - this.linkBubble.offsetWidth - 8);
+    this.linkBubble.style.left = `${left}px`;
+    this.linkBubble.style.top = `${hit.rect.bottom - box.top + 4}px`;
+  }
+
+  hideLinkBubble() {
+    if (this.linkBubble) this.linkBubble.hidden = true;
+  }
+
+  openLinkAtCaret() {
+    const hit = this.linkAtCaret();
+    if (hit) window.open(hit.url, '_blank', 'noopener,noreferrer');
   }
 
   refresh() {
@@ -196,10 +289,7 @@ export class NoteEditor {
       });
       this.bodyEl.addEventListener('paste', (e) => this.onPaste(e));
       this.bodyEl.addEventListener('click', (e) => {
-        // Ctrl/Cmd-click opens links typed into the body.
-        if (!(e.ctrlKey || e.metaKey)) return;
-        const m = /https?:\/\/\S+/.exec(window.getSelection()?.anchorNode?.textContent || '');
-        if (m) window.open(m[0], '_blank', 'noopener');
+        if (e.ctrlKey || e.metaKey) this.openLinkAtCaret();
       });
       this.contentEl.replaceChildren(this.bodyEl);
     }
@@ -318,17 +408,21 @@ export class NoteEditor {
     const anns = this.work.annotations || [];
     this.linksEl.replaceChildren(anns.length ? h('div', { class: 'links' }, anns.map((a, i) => {
       const href = safeUrl(a.url);
+      // The whole preview opens the page when the link is real.
       return h('div', { class: 'link' },
-        h('div', { class: 'link-icon' }, icon('link', 'sm')),
-        h(href ? 'a' : 'div', { class: 'link-text', href, target: '_blank', rel: 'noopener noreferrer', style: { color: 'inherit', textDecoration: 'none' } },
-          h('div', { class: 'link-title' }, a.title || a.url),
-          h('div', { class: 'link-host' }, hostOf(a.url)),
-          a.description ? h('div', { class: 'link-desc' }, a.description) : null),
+        h(href ? 'a' : 'div', { class: 'link-main', href, target: '_blank', rel: 'noopener noreferrer', 'data-tip': href ? `Open ${a.url}` : null },
+          linkThumb(a.url),
+          h('div', { class: 'link-text' },
+            h('div', { class: 'link-title' }, a.title || a.url),
+            h('div', { class: 'link-host' }, hostOf(a.url)),
+            a.description ? h('div', { class: 'link-desc' }, a.description) : null)),
         this.readOnly ? null : iconBtn('close', 'Remove link preview', () => this.removeLink(i), 'sm'));
     })) : '');
   }
 
   removeLink(index) {
+    const removed = this.work.annotations?.[index];
+    if (removed?.url && this.id) rememberDismissed(`${this.id}|${removed.url}`);
     const annotations = (this.work.annotations || []).filter((_, i) => i !== index);
     this.work.annotations = annotations;
     this.renderLinks();
@@ -533,6 +627,7 @@ export class NoteEditor {
       this.markDirty('list');
     });
     ta.addEventListener('keydown', (e) => this.onItemKey(e, item, ta));
+    ta.addEventListener('click', (e) => { if (e.ctrlKey || e.metaKey) this.openLinkAtCaret(); });
     const row = h('div', { class: `list-row${item.isChecked ? ' checked' : ''}` },
       h('span', { class: 'handle', 'aria-hidden': 'true' }, icon('drag', 'sm')),
       h('button', {
@@ -662,6 +757,7 @@ export class NoteEditor {
     for (const ta of [this.titleEl]) autosize(ta);
     if (this.listEl) for (const ta of this.listEl.querySelectorAll('textarea')) autosize(ta);
     if (this.opts.focus) this.focusContent();
+    this.addLinkPreviews();
   }
 
   /** Show inline in the composer slot; clicking elsewhere closes it. */

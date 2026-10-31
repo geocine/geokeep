@@ -30,6 +30,7 @@ export class Store {
     this.media = new Map(); // filePath -> { width, height } | { missing: true } | {}
     this.loadErrors = [];
     this.queue = Promise.resolve();
+    this.rev = 0; // bumped on every change, for caches derived from the notes
   }
 
   /** Run fn with exclusive access; all writes go through here. */
@@ -50,7 +51,18 @@ export class Store {
     return this.exclusive(() => this.#load());
   }
 
+  /** Every link-preview URL on any note (cached until the notes change). */
+  annotationUrls() {
+    if (this.urlCache?.rev !== this.rev) {
+      const urls = new Set();
+      for (const e of this.notes.values()) for (const a of e.note.annotations || []) if (a?.url) urls.add(a.url);
+      this.urlCache = { rev: this.rev, urls };
+    }
+    return this.urlCache.urls;
+  }
+
   async #load() {
+    this.rev++;
     const metaText = await readIfExists(this.metaFile, 'utf8');
     let ids = {};
     if (metaText) {
@@ -159,6 +171,7 @@ export class Store {
   }
 
   async #writeNote(entry) {
+    this.rev++;
     await atomicWrite(join(this.keepDir, `${entry.stem}.json`), JSON.stringify(entry.note));
   }
 
@@ -289,6 +302,7 @@ export class Store {
     const entry = this.get(id);
     this.#unindex(entry);
     this.notes.delete(id);
+    this.rev++;
     await unlinkIfExists(join(this.keepDir, `${entry.stem}.json`));
     await unlinkIfExists(join(this.keepDir, `${entry.stem}.html`));
     await this.#collectGarbage((entry.note.attachments || []).map((a) => a.filePath));
