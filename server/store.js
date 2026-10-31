@@ -406,10 +406,13 @@ export class Store {
   // ---- Import support -----------------------------------------------------
 
   /** Find the stored note an incoming Takeout note corresponds to. */
-  findMatch(incoming, claimed) {
+  findMatch(incoming, claimed, { onlyIncoming = false } = {}) {
     const created = Number(incoming.createdTimestampUsec);
     const cands = [...(this.byCreated.get(created) || [])].filter((e) => !claimed.has(e.id));
     if (!cands.length) return null;
+    // One stored and one incoming note created in the same microsecond are the same
+    // note, even if Keep changed its title, text and images since the last export.
+    if (cands.length === 1 && onlyIncoming && (this.byCreated.get(created)?.size ?? 0) === 1) return cands[0];
     const key = attachmentKey(incoming);
     let best = null;
     let bestScore = 0;

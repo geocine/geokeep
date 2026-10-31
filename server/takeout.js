@@ -148,10 +148,16 @@ export async function importSources(store, sources, { log = () => {} } = {}) {
       const claimed = new Set();
       const matches = new Map();
       const exact = (e, n) => e && Number(e.note.userEditedTimestampUsec) === Number(n.userEditedTimestampUsec) && e.note.title === n.title;
+      const incomingPerCreated = new Map();
+      for (const p of parsed) {
+        const k = Number(p.note.createdTimestampUsec);
+        incomingPerCreated.set(k, (incomingPerCreated.get(k) || 0) + 1);
+      }
       for (const pass of [true, false]) {
         for (const p of parsed) {
           if (matches.has(p)) continue;
-          const m = store.findMatch(p.note, claimed);
+          const onlyIncoming = incomingPerCreated.get(Number(p.note.createdTimestampUsec)) === 1;
+          const m = store.findMatch(p.note, claimed, { onlyIncoming });
           if (m && (!pass || exact(m, p.note))) { matches.set(p, m); claimed.add(m.id); }
         }
       }

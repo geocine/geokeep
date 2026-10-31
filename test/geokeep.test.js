@@ -166,6 +166,31 @@ test('a later Takeout updates edited notes, keeps newer local edits, and never d
   assert.equal(store.notes.size, 6);
 });
 
+test('re-importing never duplicates, even when Keep changed title, text and images', async () => {
+  const t = 1700000000000000;
+  const img = { '1500000000000.123456789.png': PNG_1x2 };
+  const first = await takeout(await tmp(), {
+    Trip: note({ title: 'Trip', textContent: 'pack', createdTimestampUsec: t }),
+    Same: note({ title: 'Same', textContent: 'x', createdTimestampUsec: t + 1 }),
+  });
+  const store = new Store(join(await tmp(), 'data'));
+  await store.init();
+  await importSources(store, await findSources([first]));
+
+  const again = await importSources(store, await findSources([first]));
+  assert.equal(again.added.length, 0);
+  assert.equal(again.unchanged, 2);
+
+  const changed = await takeout(await tmp(), {
+    'Trip to Japan': note({ title: 'Trip to Japan', textContent: 'pack, passport', createdTimestampUsec: t, userEditedTimestampUsec: t + 900, attachments: [{ filePath: '1500000000000.123456789.png', mimetype: 'image/png' }] }),
+    Same: note({ title: 'Same', textContent: 'x', createdTimestampUsec: t + 1 }),
+  }, { media: img });
+  const r = await importSources(store, await findSources([changed]));
+  assert.deepEqual(r.updated, ['Trip to Japan']);
+  assert.equal(r.added.length, 0);
+  assert.equal(store.notes.size, 2);
+});
+
 test('missing attachments are recorded, sibling extensions are found, and the note is kept', async () => {
   const src = await takeout(await tmp(), {
     N: note({ title: 'N', attachments: [{ filePath: 'a.jpeg', mimetype: 'image/jpeg' }, { filePath: 'gone.png', mimetype: 'image/png' }, { filePath: '../evil.png' }] }),
