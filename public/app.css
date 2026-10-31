@@ -579,7 +579,8 @@ html[data-layout='list'] .card-toolbar { opacity: 1; }
 .ink-tool { position: relative; }
 .ink-tool .ink-swatch { position: absolute; left: 11px; right: 11px; bottom: 6px; height: 3px; border-radius: 2px; }
 .ink-spacer { flex: 1; }
-.ink-scroll { flex: 1; overflow: auto; background: #fafafa; overscroll-behavior: contain; }
+/* Always reserve the vertical scrollbar, so the page width never exceeds the view. */
+.ink-scroll { flex: 1; overflow-x: auto; overflow-y: scroll; background: #fafafa; overscroll-behavior: contain; }
 .ink-page { position: relative; background: #fff; }
 .ink-layer { position: absolute; left: 0; top: 0; }
 .ink-live { touch-action: none; cursor: crosshair; }
