@@ -1,0 +1,23 @@
+{
+  "name": "geokeep",
+  "version": "1.0.0",
+  "description": "Self-hosted Google Keep clone whose storage is a Google Takeout Keep folder",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "geokeep": "bin/geokeep.js"
+  },
+  "scripts": {
+    "start": "node bin/geokeep.js serve",
+    "import": "node bin/geokeep.js import",
+    "export": "node bin/geokeep.js export",
+    "snapshot": "node bin/geokeep.js snapshot",
+    "test": "node --test test/*.test.js",
+    "bench:generate": "node bench/generate.js",
+    "bench:server": "node bench/server-bench.js"
+  }
+}

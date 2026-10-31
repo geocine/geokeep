@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GeoKeep</title>
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" href="logo.svg" type="image/svg+xml">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="app.css">
+  <script>
+    // Apply the saved theme before first paint.
+    try {
+      const t = localStorage.getItem('gk-theme') || 'system';
+      const dark = t === 'dark' || (t === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
+      document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+      if (localStorage.getItem('gk-layout') === 'list') document.documentElement.dataset.layout = 'list';
+    } catch {}
+  </script>
+</head>
+<body>
+  <header class="topbar" id="topbar">
+    <button class="icon-btn" id="menu-btn" data-tip="Main menu" aria-label="Main menu"></button>
+    <a class="brand" href="#home" aria-label="GeoKeep home">
+      <img src="logo.svg" alt="" width="40" height="40">
+      <span class="brand-name" id="brand-name">GeoKeep</span>
+    </a>
+    <form class="search" id="search-form" role="search" autocomplete="off">
+      <button class="icon-btn" type="button" id="search-btn" data-tip="Search" aria-label="Search"></button>
+      <span class="search-chip" id="search-chip" hidden></span>
+      <input id="search" type="search" placeholder="Search" aria-label="Search notes" spellcheck="false">
+      <button class="icon-btn" type="button" id="search-clear" data-tip="Clear search" aria-label="Clear search"></button>
+    </form>
+    <div class="top-actions">
+      <button class="icon-btn mobile-only" id="search-open" data-tip="Search" aria-label="Search"></button>
+      <button class="icon-btn" id="refresh-btn" data-tip="Refresh" aria-label="Refresh"></button>
+      <button class="icon-btn" id="layout-btn" data-tip="List view" aria-label="Toggle list view"></button>
+      <button class="icon-btn" id="settings-btn" data-tip="Settings" aria-label="Settings"></button>
+    </div>
+  </header>
+
+  <div class="selection-bar" id="selection-bar" hidden>
+    <button class="icon-btn" id="sel-clear" data-tip="Clear selection" aria-label="Clear selection"></button>
+    <span class="sel-count" id="sel-count"></span>
+    <div class="sel-actions" id="sel-actions"></div>
+  </div>
+
+  <nav class="sidebar" id="sidebar" aria-label="Views"></nav>
+  <div class="scrim" id="scrim" hidden></div>
+
+  <main class="main" id="main">
+    <div id="banner"></div>
+    <div id="composer-slot"></div>
+    <div id="content"></div>
+  </main>
+
+  <div id="layer"></div>
+  <div class="snackbar" id="snackbar" role="status" aria-live="polite" hidden></div>
+  <div class="tooltip" id="tooltip" role="tooltip" hidden></div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

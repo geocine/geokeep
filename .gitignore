@@ -1,0 +1,6 @@
+# Personal data never goes into git
+/data/
+takeout-*/
+takeout-*.zip
+*.zip
+node_modules/

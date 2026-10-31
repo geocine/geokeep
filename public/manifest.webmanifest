@@ -1,0 +1,10 @@
+{
+  "name": "GeoKeep",
+  "short_name": "GeoKeep",
+  "description": "Your Google Keep notes, kept in Takeout format on your own machine.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#f6b400",
+  "icons": [{ "src": "logo.svg", "sizes": "any", "type": "image/svg+xml" }]
+}
